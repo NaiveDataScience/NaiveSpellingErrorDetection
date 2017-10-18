@@ -8,10 +8,8 @@ for i in range(1000):
     ansline=ansfile.readline().split('\t')[1]
     ansset=set(nltk.word_tokenize(ansline))
     resultline=resultfile.readline().split('\t')[1]
-    resultset=set(nltk.word_tokenize(resultline))
-    if ansset==resultset:
+    resultset = set(nltk.word_tokenize(resultline))
+
+    if ansset == resultset:
         count+=1
-    else:
-        print(ansline)
-        print(resultline)
 print("Accuracy is : %.2f%%" % (count*1.00/10))
