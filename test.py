@@ -2,112 +2,155 @@
 import numpy as np
 import math
 import json
-from utils import generate_candidate_list, createNoisyChannel, naive_languange_model
+from utils import generate_candidate_list, createNoisyChannel
 vocabularies = {}
 
 LEFT = 0
 DOWN = 1
 DIAG = 2
 
+BIGRAM_BIAS = -6
+BIGRAM_THETA = 0.8
+
 anslines = []
-with open("ans.txt") as fp:
+def loadAnswer(filename):
+    '''
+    Load the right answer, which will be convinient to compare with your result
+    :param filename
+    :return: anslines
+    '''
+    with open("ans.txt") as fp:
+        anslines = []
+        for i in range(1000):
+            ansline=fp.readline().split('\t')[1]
+            anslines.append(ansline)
 
-    for i in range(1000):
-        ansline=fp.readline().split('\t')[1]
-        anslines.append(ansline)
+    return anslines
 
-with open("mylm.json") as fp:
-    vocabularies = json.loads(fp.read())
+def loadYourLanguangeModel(filename):
+    '''
+    Load your own language model
+    :param filename
+    :return: your own model
+    '''
+    with open("mylm.json") as fp:
+        vocabularies = json.loads(fp.read())
 
-# with open("retuer.lm", 'r') as fp:
-#     lines = fp.readlines()
-#
-#     index = 0
-#
-#     ##find the starting of 1-gram
-#     divide_str = "\\1-grams:\n"
-#     while lines[index] != divide_str:
-#         index += 1
-#
-#     index += 1
-#
-#
-#     ##finish util the ending of 2-gram
-#     while lines[index] != "\n":
-#         try:
-#             (log_value, word) = lines[index].strip('\n').split('\t')[0:2]
-#             vocabularies[word] = {
-#                 "log_value": float(log_value),
-#                 "candidates": {}
-#             }
-#         except:
-#             print(index)
-#         finally:
-#             index += 1
-#
-#     index += 2
-#
-#     while lines[index] != '\n':
-#         temp = lines[index]
-#         (log_value, word_two_str) = lines[index].strip('\n').split('\t')[0:2]
-#         word_two = word_two_str.split(" ")
-#         vocabularies[word_two[0]]['candidates'][word_two[1]] = {
-#             "probility": float(log_value)
-#         }
-#         index += 1
+    return vocabularies
 
-with open("vocab.txt") as fp:
-    vocabs = fp.readlines()
+def loadStandardLanguageModel(filename):
+    '''
+    Load the third part languange model
+    :param filename:
+    :return: model
+    '''
 
-    for vocab in vocabs:
-        vocab = vocab.strip('\r\n')
-        if vocabularies.get(vocab) is None:
-            vocabularies[vocab] = {
-                "log_value": -100,
-                "candidates": {}
+    vocabularies = {}
+
+    with open("retuer.lm", 'r') as fp:
+        lines = fp.readlines()
+
+        index = 0
+
+        ##find the starting of 1-gram
+        divide_str = "\\1-grams:\n"
+        while lines[index] != divide_str:
+            index += 1
+
+        index += 1
+
+
+        ##finish util the ending of 2-gram
+        while lines[index] != "\n":
+            try:
+                (log_value, word) = lines[index].strip('\n').split('\t')[0:2]
+                vocabularies[word] = {
+                    "log_value": float(log_value),
+                    "candidates": {}
+                }
+            except:
+                print(index)
+            finally:
+                index += 1
+
+        index += 2
+
+        while lines[index] != '\n':
+            temp = lines[index]
+            (log_value, word_two_str) = lines[index].strip('\n').split('\t')[0:2]
+            word_two = word_two_str.split(" ")
+            vocabularies[word_two[0]]['candidates'][word_two[1]] = {
+                "probility": float(log_value)
             }
-        if vocabularies.get(vocab+"'") is None:
-            vocabularies[vocab+"'"] = {
-                "log_value": -100,
-                "candidates": {}
-            }
-        if vocabularies.get(vocab+',') is None:
-            vocabularies[vocab + ","] = {
-                "log_value": -100,
-                "candidates": {}
-            }
-        if vocabularies.get(vocab+'.') is None:
-            vocabularies[vocab + "."] = {
-                "log_value": -100,
-                "candidates": {}
-            }
-        if vocabularies.get(vocab+"'s") is None:
-            vocabularies[vocab + "'s"] = {
-                "log_value": -100,
-                "candidates": {}
-            }
+            index += 1
+
+    with open("vocab.txt") as fp:
+        vocabs = fp.readlines()
+
+        for vocab in vocabs:
+            vocab = vocab.strip('\r\n')
+            if vocabularies.get(vocab) is None:
+                vocabularies[vocab] = {
+                    "log_value": -100,
+                    "candidates": {}
+                }
+            if vocabularies.get(vocab+"'") is None:
+                vocabularies[vocab+"'"] = {
+                    "log_value": -100,
+                    "candidates": {}
+                }
+            if vocabularies.get(vocab+',') is None:
+                vocabularies[vocab + ","] = {
+                    "log_value": -100,
+                    "candidates": {}
+                }
+            if vocabularies.get(vocab+'.') is None:
+                vocabularies[vocab + "."] = {
+                    "log_value": -100,
+                    "candidates": {}
+                }
+            if vocabularies.get(vocab+"'s") is None:
+                vocabularies[vocab + "'s"] = {
+                    "log_value": -100,
+                    "candidates": {}
+                }
+
+    return vocabularies
 
 
+def loadTestData(filename):
+    '''
+    load the test data
+    :param filename: test data's filename
+    :return: test_data_sentence
+    '''
+    test_sentences = []
 
-test_sentences = []
+    with open("testdata.txt", 'r') as fp:
+        lines = fp.readlines()
 
-with open("testdata.txt", 'r') as fp:
-    lines = fp.readlines()
+        for (index, line) in enumerate(lines):
+            (index_str, error_count_str, sentence_str) = (line.split('\t'))
+            tokens = sentence_str.strip("\n").strip("\r").split(" ")
 
-    for (index, line) in enumerate(lines):
-        (index_str, error_count_str, sentence_str) = (line.split('\t'))
-        tokens = sentence_str.strip("\n").strip("\r").split(" ")
+            test_sentences.append({
+                'expected_error_count': int(error_count_str),
+                'sentence': sentence_str,
+                'tokens': tokens,
+                'noneword_error_count': 0,
+                "error_words_list": []
+            })
 
-        test_sentences.append({
-            'expected_error_count': int(error_count_str),
-            'sentence': sentence_str,
-            'tokens': tokens,
-            'real_error_count': 0,
-            "error_words_list": []
-        })
+    return test_sentences
 
 def caculateNoisyChannel(current_word, candidate, noisy_channel):
-
+    '''
+    Caculate noisy channel value with confusing matirx
+    :param current_word: current word
+    :param candidate: the candidate word
+    :param noisy_channel: a model about confusing matirx
+    :return: noisy value
+    '''
     method = candidate[1]
     two_chars = candidate[2].lower()
 
@@ -178,7 +221,15 @@ def caculateNoisyChannel(current_word, candidate, noisy_channel):
 
 
 def uniGram(vocabularies, index, sentence, candidate_list, noisy_channel):
-
+    '''
+    Choose the most proper word from candidate list in unigram mode
+    :param vocabularies: vocabularies
+    :param index: the index of the word in sentence
+    :param sentence: the current sentence
+    :param candidate_list: the list of candidates, need to be picked up
+    :param noisy_channel: the nosiy channel model
+    :return: the most proper word
+    '''
     current_word = sentence['tokens'][index]
     if len(candidate_list) == 1:
         return candidate_list.pop()[0]
@@ -203,7 +254,15 @@ def uniGram(vocabularies, index, sentence, candidate_list, noisy_channel):
 
 
 def biGram(vocabularies, index, sentence, candidate_list, noisy_channel):
-
+    '''
+    Choose the most proper word from candidate list in bigram mode
+    :param vocabularies: vocabularies
+    :param index: the index of the word in sentence
+    :param sentence: the current sentence
+    :param candidate_list: the list of candidates, need to be picked up
+    :param noisy_channel: the nosiy channel model
+    :return: the most proper word
+    '''
     current_word = sentence['tokens'][index]
     if len(candidate_list) == 1:
         return candidate_list.pop()[0]
@@ -223,34 +282,50 @@ def biGram(vocabularies, index, sentence, candidate_list, noisy_channel):
         if isinstance(candidate, str):
             continue
 
-        condition_value = vocabularies[previous_word]['candidates'].get(current_word)
+        condition_value = getBigramValue(vocabularies, previous_word, current_word)
+
 
         # noisy_channel = math.log(caculateNoisyChannel(current_word, candidate, noisy_channel))
 
         noisy_channel = 0
 
-        ##smooth
-        if condition_value is None:
-            value = vocabularies[candidate[0]]['log_value'] - 6 + noisy_channel
-            if max_value < value:
-                max_value = value
-                max_word = candidate[0]
-
-        else:
-            value = vocabularies[candidate[0]]['log_value'] + condition_value['probility'] + noisy_channel
-            if value > max_value:
-                max_value = value
-                max_word = candidate[0]
+        value = vocabularies[candidate[0]]['log_value'] + BIGRAM_THETA*condition_value + noisy_channel
+        if value > max_value:
+            max_value = value
+            max_word = candidate[0]
 
     return max_word
 
+def getBigramValue(vocabularies, previous_word, current_word):
+    '''
+    caculate bigram error, should implement smoothing....
+    :param vocabularies: vocabularies
+    :param previous_word: pre
+    :param current_word: current
+    :return:
+    '''
+    condition_value = vocabularies[previous_word]['candidates'].get(current_word)
 
-def CorrectSentence(sentence, vocabularies, fp, noise_channel):
+    ##smoothing
+    if condition_value is None:
+        return BIGRAM_BIAS
 
+    return condition_value['probility']
+
+def correctNoneWordError(sentence, vocabularies, fp, noise_channel):
+    '''
+
+    :param sentence: sentence need to correct
+    :param vocabularies: vocabularies
+    :param fp: file descriptor
+    :param noise_channel: noise_channel
+    :return:
+    '''
     for (index, token) in enumerate(sentence['tokens']):
+
         if token != "" and vocabularies.get(token) is None:
 
-            sentence['real_error_count'] += 1
+            sentence['noneword_error_count'] += 1
             sentence['error_words_list'].append(token)
 
             candidate_list = set()
@@ -264,7 +339,6 @@ def CorrectSentence(sentence, vocabularies, fp, noise_channel):
             print("wrong word: {0}".format(token))
             print("candidate_list {0}".format(candidate_list))
 
-
             # proper_word = uniGram(vocabularies, index, sentence, candidate_list, noise_channel)
 
 
@@ -275,9 +349,87 @@ def CorrectSentence(sentence, vocabularies, fp, noise_channel):
                 proper_word = token
                 print("EMPTY!!!!!\n\n")
 
-
             print("proper_word {0}".format(proper_word))
             sentence['tokens'][index] = proper_word
+
+def correctRealWordError(sentence, vocabularies, fp, noise_channel, realword_error_count):
+    '''
+
+    :param sentence: sentence which has correct the none word error
+    :param vocabularies: vocabularies
+    :param fp: fp
+    :param noise_channel: noise_channel
+    :param realword_error_count: the number of error need to be correct
+    :return: None
+    '''
+
+    ##We only discuss the naive situation
+    if realword_error_count != 1:
+        return
+
+    final_max_value = -100000
+    final_max_word = ""
+
+    for (index, token) in enumerate(sentence['tokens']):
+        if token != "" and vocabularies.get(token) is None:
+            candidate_list = set()
+            candidate_list.add(token)
+
+            candidate_list = generate_candidate_list(token, vocabularies, candidate_list, 1)
+
+            max_word = ""
+            max_value = -100000
+            for candidate in candidate_list:
+
+                if index == 0:
+                    pre = "<s>"
+                    next = sentence['tokens'][index + 1]
+                elif index == len(sentence['tokens'])-1:
+                    ##we do not handle </s>
+                    continue
+                else:
+                    pre = sentence['tokens'][index-1]
+                    next = sentence['tokens'][index+1]
+
+                ##exclude the case of ""
+                if pre == "" or next == "":
+                    continue
+
+                pre_value = getBigramValue(vocabularies, pre, candidate[0])
+                post_value = getBigramValue(vocabularies, candidate[0], next)
+                value = pre_value + post_value
+
+                if value > max_value:
+                    max_value = value
+                    max_word = candidate[0]
+
+            if max_value > final_max_value:
+                final_max_value = max_value
+                final_max_word = max_word
+
+    print("real_word error {0}".format(final_max_word))
+    sentence['tokens'][index] = final_max_word
+
+
+def CorrectSentence(sentence, vocabularies, fp, noise_channel):
+    '''
+    Correct the sentence and write it to your answer sheet
+    :param sentence: the original sentence
+    :param vocabularies: vocabularies
+    :param fp: file descriptor, used to write to "result.txt"
+    :param noise_channel: noise_channel
+    :return: None
+    '''
+
+    correctNoneWordError(sentence, vocabularies, fp, noise_channel)
+
+
+    ##When your finished the non-word error, pay attention to the real word error
+    if sentence['noneword_error_count'] < sentence['expected_error_count']:
+        realword_error_count = sentence['expected_error_count'] - sentence['noneword_error_count']
+        print("noneword_error {0}, expected_error {1}".format(sentence['noneword_error_count'], sentence['expected_error_count']))
+        correctRealWordError(sentence, vocabularies, fp, noise_channel, realword_error_count)
+
 
     sentence['correct_sentence'] = ""
 
@@ -292,32 +444,11 @@ def CorrectSentence(sentence, vocabularies, fp, noise_channel):
 
     print("correct_sentence: {0}".format(sentence['correct_sentence']))
 
-    fp.write(str(index+1)+'\t'+sentence['correct_sentence']+'\n')
+    fp.write(str(1)+'\t'+sentence['correct_sentence']+'\n')
 
 
 
 
-
-with open("result.txt", 'w') as fp:
-
-    noisy_channel = createNoisyChannel()
-
-    count = 0
-
-    for (index, sentence) in enumerate(test_sentences):
-
-        CorrectSentence(sentence, vocabularies, fp, noisy_channel)
-
-        ansline = anslines[index].strip('\r\n')
-        print("answer_sentence : {0}".format(ansline))
-        if (sentence['correct_sentence'] == ansline):
-            print("bingo")
-            count += 1
-        print("\n\n")
-
-    print(count)
-# with open("none", 'w') as fp:
-#     CorrectSentence(test_sentences[998], vocabularies, fp, noise_channel)
 
 
 
